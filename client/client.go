@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/StanislavStefanov/Battleships/utils"
 	"github.com/gorilla/websocket"
 	"log"
 	"net/url"
@@ -18,12 +20,35 @@ func readLoop(done chan<- struct{}, conn *websocket.Conn) {
 		done <- struct{}{}
 	}()
 	for {
-		_, bytes, _ := conn.ReadMessage()
-		var msg map[string]interface{}
+		_, bytes, err := conn.ReadMessage()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		var msg utils.Response
 		json.Unmarshal(bytes, &msg)
-		action := msg["action"].(string)
-		id := msg["id"].(string)
-		fmt.Println(action, id)
+		fmt.Println(msg)
+
+		//req := utils.BuildRequest("az", "ls-rooms", nil)
+		//marshal, _ := json.Marshal(req)
+		//conn.WriteMessage(websocket.BinaryMessage, marshal)
+	}
+}
+
+func writeLoop(done chan<- struct{}, conn *websocket.Conn) {
+	defer func() {
+		done <- struct{}{}
+	}()
+	for {
+		fmt.Println("enter command")
+		buf := bufio.NewReader(os.Stdin)
+		fmt.Print("> ")
+		sentence, _ := buf.ReadBytes('\n')
+		s := string(sentence)
+		fmt.Println(s)
+		var msg = utils.BuildRequest("az", s, nil)
+		marshal, _ := json.Marshal(msg)
+		conn.WriteMessage(websocket.BinaryMessage, marshal)
 	}
 }
 
@@ -45,5 +70,7 @@ func main() {
 
 	done := make(chan struct{})
 
-	readLoop(done, c)
+	go readLoop(done, c)
+	go writeLoop(done, c)
+	<-done
 }
