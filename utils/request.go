@@ -1,4 +1,4 @@
-package main
+package utils
 
 type Request struct {
 	PlayerId string                 `json:"playerId"`
@@ -15,7 +15,7 @@ func BuildRequest(id string, action string, args map[string]interface{}) Request
 }
 
 func (r *Request) GetId() string {
-	return r.Action
+	return r.PlayerId
 }
 
 func (r *Request) GetAction() string {
