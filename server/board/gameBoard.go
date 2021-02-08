@@ -2,6 +2,7 @@ package board
 
 import (
 	"errors"
+	"fmt"
 )
 
 const (
@@ -39,8 +40,24 @@ func CreateShip(x, y int, direction string, length int) Ship {
 	}
 }
 
-func (s Ship) SetLength(length int){
+func (s Ship) SetLength(length int) {
 	s.length = length
+}
+
+func (s Ship) GetX() int{
+	return s.x
+}
+
+func (s Ship) GetY() int{
+	return s.y
+}
+
+func (s Ship) GetDirection() string {
+	return s.direction
+}
+
+func (s Ship) GetLength() int {
+	return s.length
 }
 
 func (s Ship) GetPositions() ([]Position, error) {
@@ -126,6 +143,29 @@ func InitBoard() *Board {
 		ownFields:   initFields(),
 		enemyFields: initFields(),
 	}
+}
+
+func printBoard(b [][]rune) {
+	fmt.Print("  ")
+	for i := 0; i < 10; i++ {
+		fmt.Print(i, " ")
+	}
+	fmt.Println("")
+	for i, r := range b {
+		fmt.Print(i, " ")
+		for _, c := range r {
+			fmt.Print(string(c), " ")
+		}
+		fmt.Println("")
+	}
+}
+
+func (b *Board) Print() {
+	fmt.Println("Enemy fields:")
+	printBoard(b.enemyFields)
+
+	fmt.Println("Own fields:")
+	printBoard(b.ownFields)
 }
 
 func (b *Board) PlaceShip(ship Ship) error {
