@@ -22,20 +22,27 @@ type Sender struct {
 }
 
 func (s *Sender) SendResponse(response utils.Response, conn *websocket.Conn) {
+	if conn == nil {
+		fmt.Println("no connection")
+	}
 	resp, err := json.Marshal(response)
 	if err != nil {
-		//TODO
+		fmt.Println("Send response: marshal error: ", err)
 	}
+	fmt.Println(response)
 	err = conn.WriteMessage(websocket.BinaryMessage, resp)
-	log.Fatal(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 type Server struct {
-	clients  map[string]*player.Player
-	rooms    map[string]*Room
-	register chan *websocket.Conn
-	done     chan struct{}
-	sender   ResponseSender
+	clients     map[string]*player.Player
+	rooms       map[string]*Room
+	connectRoom map[string]chan *player.Player
+	register    chan *websocket.Conn
+	done        chan struct{}
+	sender      ResponseSender
 	uuid.UUID
 }
 
@@ -57,16 +64,16 @@ func (s *Server) registerClient(conn *websocket.Conn) {
 	playerId := uuid.New().String()
 	fmt.Printf("register %s \n", playerId)
 
-	player := &player.Player{
+	pl := &player.Player{
 		Conn:  conn,
 		Board: board.InitBoard(),
 		Id:    playerId}
-	s.clients[playerId] = player
+	s.clients[playerId] = pl
 
-	resp := utils.BuildResponse("register", playerId,nil)
+	resp := utils.BuildResponse("register", "Connected to server.", map[string]interface{}{"id": playerId})
 	marshal, _ := json.Marshal(resp)
 	conn.WriteMessage(websocket.BinaryMessage, marshal)
-	go readLoop(player, s, nil, nil)
+	go readLoop(pl, s, nil, nil)
 }
 
 func (s *Server) deletePlayer(id string) {
@@ -80,8 +87,9 @@ func (s *Server) deleteRoom(id string) {
 	delete(s.rooms, id)
 }
 
-func (s *Server) listRooms() map[string]int {
-	roomsInfo := make(map[string]int)
+func (s *Server) listRooms() map[string]interface{} {
+	roomsInfo := make(map[string]interface{})
+	//fmt.Println(s.rooms)
 	for _, r := range s.rooms {
 		name, playersCount := r.GetRoomInfo()
 		roomsInfo[name] = playersCount
@@ -90,14 +98,14 @@ func (s *Server) listRooms() map[string]int {
 }
 
 func (s *Server) createRoom(clientId string) {
-	roomId := uuid.New().String()
-	room := Room{
-		Current: s.clients[clientId],
-		Next:    nil,
-		Id:      roomId,
-	}
-	s.rooms[roomId] = &room
-	//TODO run room goroutine
+	roomID := uuid.New().String()
+	p := s.clients[clientId]
+	room := CreateRoom(roomID, p, nil)
+	s.rooms[roomID] = &room
+
+	connect := make(chan *player.Player)
+	s.connectRoom[roomID] = connect
+	go s.runRoom(&room, nil, connect)
 }
 
 func (s *Server) joinRoom(roomID string, player *player.Player) bool {
@@ -115,16 +123,12 @@ func (s *Server) joinRoom(roomID string, player *player.Player) bool {
 		return false
 	}
 
-	room.Next = player
+	//room.Next = player
 	s.deletePlayer(player.Id)
 
-	resp := utils.BuildResponse(Wait,
-		fmt.Sprintf("You have joined room %s. Wait for your opponent to make his turn", roomID),
-		nil)
-	s.sender.SendResponse(resp, player.Conn)
-
-	//TODO add chan
-	go s.runRoom(room, nil)
+	connect := s.connectRoom[roomID]
+	connect <- player
+	delete(s.connectRoom, roomID)
 	return true
 }
 
@@ -139,17 +143,23 @@ func (s *Server) joinRandomRoom(player *player.Player) bool {
 	return s.joinRoom(roomID, player)
 }
 
+//TODO implement
 func (s *Server) findRoom() string {
 	return ""
 }
 
 func readLoop(player *player.Player, s *Server, done chan<- struct{}, stop chan<- struct{}) {
 	for {
-		_, bytes, _ := player.Conn.ReadMessage()
-		var msg map[string]interface{}
-		json.Unmarshal(bytes, &msg)
-		action := msg["action"].(string)
-		fmt.Println(action)
+		_, bytes, err := player.Conn.ReadMessage()
+		if err != nil {
+			fmt.Println("read error", err)
+			return
+		}
+		var request utils.Request
+		json.Unmarshal(bytes, &request)
+		action := request.Action
+
+
 		switch action {
 		case "exit":
 			s.deletePlayer(player.Id)
@@ -157,13 +167,14 @@ func readLoop(player *player.Player, s *Server, done chan<- struct{}, stop chan<
 			return
 		case "ls-rooms":
 			rooms := s.listRooms()
-			marshal, _ := json.Marshal(rooms)
-			player.Conn.WriteMessage(websocket.BinaryMessage, marshal)
+			resp := utils.BuildResponse(Info, "Rooms: ", rooms)
+			s.sender.SendResponse(resp, player.Conn)
+			//TODO
 		case "createRoom":
 			s.createRoom(player.Id)
 			return
 		case "join-room":
-			roomId, ok := msg["roomId"].(string)
+			roomId, ok := request.Args["roomId"].(string)
 			if !ok {
 				resp := utils.BuildResponse(Retry, "Invalid room ID format", nil)
 				s.sender.SendResponse(resp, player.Conn)
@@ -204,9 +215,13 @@ func main() {
 	message := make(chan struct{})
 
 	hub := Server{
-		clients:  make(map[string]*player.Player, 0),
-		register: register,
-		done:     message,
+		clients:     make(map[string]*player.Player, 0),
+		rooms:       make(map[string]*Room, 0),
+		connectRoom: make(map[string]chan *player.Player, 0),
+		register:    register,
+		done:        message,
+		sender:      &Sender{},
+		UUID:        uuid.UUID{},
 	}
 	go hub.run()
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

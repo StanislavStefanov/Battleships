@@ -9,6 +9,7 @@ import (
 	"github.com/StanislavStefanov/Battleships/utils"
 	"github.com/gorilla/websocket"
 	"log"
+	"strconv"
 	"sync"
 )
 
@@ -47,6 +48,7 @@ func CreateRoom(id string, player *player.Player, done chan struct{}) Room {
 		ShipSizeToCount: map[int]int{destroyer: destroyerCount, battleship: battleshipCount, ship: shipCount, boat: boatCount},
 		NextShipSize:    destroyer,
 		Id:              id,
+		ResponseSender:  &Sender{},
 	}
 }
 
@@ -70,20 +72,24 @@ func (r *Room) GetRoomInfo() (string, int) {
 }
 
 const (
-	Exit      = "exit"
-	Shoot     = "shoot"
-	PlaceShip = "place"
-	Wait      = "wait"
-	Retry     = "retry"
-	Win       = "win"
-	Lose      = "lose"
+	Exit         = "exit"
+	Shoot        = "shoot"
+	ShootOutcome = "shoot-outcome"
+	PlaceShip    = "place"
+	Placed       = "placed"
+	Wait         = "wait"
+	Retry        = "retry"
+	Win          = "win"
+	Lose         = "lose"
+	Info         = "info"
 )
 
+//todo fix exit logic
 func (r *Room) ProcessCommand(request utils.Request) {
 	id := request.GetId()
 	if id != r.Current.Id {
 		resp := utils.BuildResponse(Wait, "Wait for enemy to make his turn.", nil)
-		r.ResponseSender.SendResponse(resp, r.Next.Conn)
+		r.ResponseSender.SendResponse(resp, r.Current.Conn)
 		return
 	}
 
@@ -109,16 +115,16 @@ func (r *Room) ProcessCommand(request utils.Request) {
 }
 
 func (r *Room) processShipPlacement(request utils.Request) {
-	err := r.placeShip(request)
+	ship, err := r.placeShip(request)
 	if err != nil {
 		resp := utils.BuildResponse(Retry, err.Error(), nil)
 		r.ResponseSender.SendResponse(resp, r.Current.Conn)
 		return
 	}
 
-	resp := utils.BuildResponse(Wait,
+	resp := utils.BuildResponse(Placed,
 		"Ship placed successfully. Wait for opponent to make his turn.",
-		nil)
+		map[string]interface{}{"x": ship.GetX(), "y": ship.GetY(), "direction": ship.GetDirection(), "length": ship.GetLength()})
 	r.ResponseSender.SendResponse(resp, r.Current.Conn)
 
 	length, err := r.getNextShipSize()
@@ -138,15 +144,15 @@ func (r *Room) processShipPlacement(request utils.Request) {
 	r.switchPlayers()
 }
 
-func (r *Room) placeShip(req utils.Request) error {
+func (r *Room) placeShip(req utils.Request) (*board.Ship, error) {
 	ship, err := getShip(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ship.SetLength(r.NextShipSize)
 
-	return r.Current.PlaceShip(*ship)
+	return ship, r.Current.PlaceShip(*ship)
 }
 
 func getShip(req utils.Request) (*board.Ship, error) {
@@ -167,11 +173,11 @@ func getShip(req utils.Request) (*board.Ship, error) {
 		return nil, err
 	}
 
-	length, err := extractIntFromArgs("length", args)
-	if err != nil {
-		return nil, err
-	}
-	ship := board.CreateShip(x, y, direction, length)
+	//length, err := extractIntFromArgs("length", args)
+	//if err != nil {
+	//	return nil, err
+	//}
+	ship := board.CreateShip(x, y, direction, 0)
 	return &ship, err
 }
 
@@ -223,7 +229,7 @@ func (r *Room) processShoot(request utils.Request) {
 	args["x"] = position.X
 	args["y"] = position.Y
 
-	resp := utils.BuildResponse(Wait, "", args)
+	resp := utils.BuildResponse(ShootOutcome, "", args)
 	r.ResponseSender.SendResponse(resp, r.Current.Conn)
 
 	resp = utils.BuildResponse(Shoot, "Select filed to attack.", args)
@@ -278,8 +284,8 @@ func extractIntFromArgs(key string, args map[string]interface{}) (int, error) {
 	if !ok {
 		return 0, errors.New(fmt.Sprintf("missing value for %s", key))
 	}
-	value, ok := v.(int)
-	if !ok {
+	value, err := strconv.Atoi(v.(string))
+	if err != nil {
 		return 0, errors.New(fmt.Sprintf("invalid value for %s", key))
 	}
 
@@ -299,23 +305,50 @@ func extractStringFromArgs(key string, args map[string]interface{}) (string, err
 	return value, nil
 }
 
-func (s *Server) runRoom(r *Room, done <-chan struct{}) {
-	var wg *sync.WaitGroup
+func (s *Server) runRoom(r *Room, done <-chan struct{}, join chan *player.Player) {
+	var wg = &sync.WaitGroup{}
+	fmt.Println("Start room")
 
 	first := make(chan utils.Request)
 	wg.Add(1)
 	go playerReadLoop(r.Current.Conn, first, wg)
 
+	resp := utils.BuildResponse(Wait,
+		fmt.Sprintf("You have created room %s. Wait for an opponent to join the room.", r.Id),
+		map[string]interface{}{"id": r.Id})
+	s.sender.SendResponse(resp, r.Current.Conn)
+
 	second := make(chan utils.Request)
-	wg.Add(1)
-	go playerReadLoop(r.Next.Conn, second, wg)
 
 	for {
 		select {
 		case request := <-first:
+			fmt.Printf("Message from %s", r.Current.Id)
+			//TODO refactor processCommand to return response instead of sending ir right away
 			r.ProcessCommand(request)
 		case request := <-second:
 			r.ProcessCommand(request)
+		case secondPlayer := <-join:
+			fmt.Println("here is your join")
+			if r.Next == nil {
+				fmt.Println("here is your join but this time in the if")
+				r.Next = secondPlayer
+				wg.Add(1)
+
+				resp := utils.BuildResponse(Wait,
+					fmt.Sprintf("You have joined room %s. Wait for your opponent to make his turn.", r.Id),
+					nil)
+				s.sender.SendResponse(resp, secondPlayer.Conn)
+
+				go playerReadLoop(secondPlayer.Conn, second, wg)
+
+				r.Phase = PlaceShip
+
+				resp = utils.BuildResponse(PlaceShip,
+					fmt.Sprintf("Select where to place ship with length %d", destroyer),
+					nil)
+				r.ResponseSender.SendResponse(resp, r.Current.Conn)
+			}
 		case <-done:
 			r.closeRoom()
 			s.deleteRoom(r.Id)
