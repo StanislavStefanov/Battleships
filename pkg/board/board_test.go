@@ -148,12 +148,12 @@ func TestBoard_PlaceShip(t *testing.T) {
 		board := InitBoard()
 		ExpectedBoard := [][]rune{{Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty},
 			{Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty},
-			{Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty},
-			{Empty, Empty, Empty, Taken, Empty, Empty, Empty, Empty, Empty, Empty},
-			{Empty, Empty, Empty, Taken, Empty, Empty, Empty, Empty, Empty, Empty},
-			{Empty, Empty, Empty, Taken, Empty, Empty, Empty, Empty, Empty, Empty},
-			{Empty, Empty, Empty, Taken, Empty, Empty, Empty, Empty, Empty, Empty},
-			{Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty},
+			{Empty, Empty, Empty, ShipArea, Empty, Empty, Empty, Empty, Empty, Empty},
+			{Empty, Empty, ShipArea, Taken, ShipArea, Empty, Empty, Empty, Empty, Empty},
+			{Empty, Empty, ShipArea, Taken, ShipArea, Empty, Empty, Empty, Empty, Empty},
+			{Empty, Empty, ShipArea, Taken, ShipArea, Empty, Empty, Empty, Empty, Empty},
+			{Empty, Empty, ShipArea, Taken, ShipArea, Empty, Empty, Empty, Empty, Empty},
+			{Empty, Empty, Empty, ShipArea, Empty, Empty, Empty, Empty, Empty, Empty},
 			{Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty},
 			{Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty}}
 
@@ -203,7 +203,6 @@ func TestBoard_PlaceShip(t *testing.T) {
 
 		expectedBoard := board.ownFields
 
-
 		// then
 		err = board.PlaceShip(secondShip)
 		assert.Equal(t, "some of the fields are already taken", err.Error())
@@ -250,7 +249,6 @@ func TestBoard_Attack(t *testing.T) {
 	})
 }
 
-
 func TestBoard_ReceiveAttack(t *testing.T) {
 	t.Run("attack hit", func(t *testing.T) {
 		// when
@@ -266,12 +264,13 @@ func TestBoard_ReceiveAttack(t *testing.T) {
 		assert.NoError(t, err)
 
 		// then
-		hit, err := board.ReceiveAttack(Position{
+		hit, sunk, err := board.ReceiveAttack(Position{
 			X: 5,
 			Y: 3,
 		})
 		assert.NoError(t, err)
 		assert.True(t, hit)
+		assert.False(t, sunk)
 		assert.Equal(t, Hit, board.ownFields[5][3])
 		assert.Equal(t, Taken, board.ownFields[6][3])
 	})
@@ -290,12 +289,13 @@ func TestBoard_ReceiveAttack(t *testing.T) {
 		assert.NoError(t, err)
 
 		// then
-		hit, err := board.ReceiveAttack(Position{
+		hit, sunk, err := board.ReceiveAttack(Position{
 			X: 5,
 			Y: 5,
 		})
 		assert.NoError(t, err)
 		assert.False(t, hit)
+		assert.False(t, sunk)
 		assert.Equal(t, Taken, board.ownFields[5][3])
 		assert.Equal(t, Taken, board.ownFields[6][3])
 		assert.Equal(t, Miss, board.ownFields[5][5])
@@ -305,10 +305,10 @@ func TestBoard_ReceiveAttack(t *testing.T) {
 		// when
 		board := InitBoard()
 		// then
-		_, err := board.ReceiveAttack(Position{
-					X: -2,
-					Y: 12,
-				})
+		_, _, err := board.ReceiveAttack(Position{
+			X: -2,
+			Y: 12,
+		})
 		assert.Equal(t, "position out of bounds", err.Error())
 	})
 }
@@ -363,6 +363,109 @@ func TestBoard_IsBeaten(t *testing.T) {
 			Y: 3,
 		})
 		beaten = board.IsBeaten()
+		assert.False(t, beaten)
+	})
+}
+
+func TestBoard_IsSunk(t *testing.T) {
+	t.Run("untouched part of ship under attacking position", func(t *testing.T) {
+		// when
+		ship := Ship{
+			x:         6,
+			y:         3,
+			direction: "up",
+			length:    3,
+		}
+
+		board := InitBoard()
+		err := board.PlaceShip(ship)
+		assert.NoError(t, err)
+
+		p := Position{
+			X: 4,
+			Y: 3,
+		}
+
+		// then
+		board.ownFields[4][3] = 'x'
+		board.ownFields[5][3] = 'x'
+
+		beaten := board.ShipIsSunk(p)
+		assert.False(t, beaten)
+	})
+	t.Run("untouched part of ship above attacking position", func(t *testing.T) {
+		// when
+		ship := Ship{
+			x:         6,
+			y:         3,
+			direction: "up",
+			length:    3,
+		}
+
+		board := InitBoard()
+		err := board.PlaceShip(ship)
+		assert.NoError(t, err)
+
+		p := Position{
+			X: 6,
+			Y: 3,
+		}
+
+		// then
+		board.ownFields[6][3] = 'x'
+		board.ownFields[5][3] = 'x'
+
+		beaten := board.ShipIsSunk(p)
+		assert.False(t, beaten)
+	})
+	t.Run("untouched part of ship left from attacking position", func(t *testing.T) {
+		// when
+		ship := Ship{
+			x:         6,
+			y:         3,
+			direction: "left",
+			length:    3,
+		}
+
+		board := InitBoard()
+		err := board.PlaceShip(ship)
+		assert.NoError(t, err)
+
+		p := Position{
+			X: 6,
+			Y: 3,
+		}
+
+		// then
+		board.ownFields[6][3] = 'x'
+		board.ownFields[6][2] = 'x'
+
+		beaten := board.ShipIsSunk(p)
+		assert.False(t, beaten)
+	})
+	t.Run("untouched part of ship right from attacking position", func(t *testing.T) {
+		// when
+		ship := Ship{
+			x:         6,
+			y:         3,
+			direction: "left",
+			length:    3,
+		}
+
+		board := InitBoard()
+		err := board.PlaceShip(ship)
+		assert.NoError(t, err)
+
+		p := Position{
+			X: 6,
+			Y: 1,
+		}
+
+		// then
+		board.ownFields[6][1] = 'x'
+		board.ownFields[6][2] = 'x'
+
+		beaten := board.ShipIsSunk(p)
 		assert.False(t, beaten)
 	})
 }
