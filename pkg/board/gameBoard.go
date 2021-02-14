@@ -13,10 +13,11 @@ const (
 )
 
 const (
-	Hit   = 'x'
-	Miss  = 'o'
-	Taken = 's'
-	Empty = '-'
+	Hit      = 'x'
+	Miss     = 'o'
+	Taken    = 's'
+	ShipArea = 'b'
+	Empty    = '-'
 )
 
 type Position struct {
@@ -40,27 +41,27 @@ func CreateShip(x, y int, direction string, length int) Ship {
 	}
 }
 
-func (s Ship) SetLength(length int) {
+func (s *Ship) SetLength(length int) {
 	s.length = length
 }
 
-func (s Ship) GetX() int{
+func (s *Ship) GetX() int {
 	return s.x
 }
 
-func (s Ship) GetY() int{
+func (s *Ship) GetY() int {
 	return s.y
 }
 
-func (s Ship) GetDirection() string {
+func (s *Ship) GetDirection() string {
 	return s.direction
 }
 
-func (s Ship) GetLength() int {
+func (s *Ship) GetLength() int {
 	return s.length
 }
 
-func (s Ship) GetPositions() ([]Position, error) {
+func (s *Ship) GetPositions() ([]Position, error) {
 	start := Position{
 		X: s.x,
 		Y: s.y,
@@ -175,19 +176,24 @@ func (b *Board) PlaceShip(ship Ship) error {
 	}
 
 	for _, position := range positions {
-		if b.ownFields[position.X][position.Y] == Taken {
+		if b.ownFields[position.X][position.Y] != Empty {
 			return errors.New("some of the fields are already taken")
 		}
 	}
 
 	for _, position := range positions {
 		b.ownFields[position.X][position.Y] = Taken
+		for _, p := range getNeighbours(position) {
+			if !isOutOfBounds(p) && b.ownFields[p.X][p.Y] != Taken {
+				b.ownFields[p.X][p.Y] = ShipArea
+			}
+		}
 	}
 	return nil
 }
 
 func (b *Board) Attack(p Position, success bool) error {
-	if p.X < 0 || p.X >= 10 || p.Y < 0 || p.Y >= 10 {
+	if isOutOfBounds(p) {
 		return errors.New("position out of bounds")
 	}
 
@@ -199,18 +205,74 @@ func (b *Board) Attack(p Position, success bool) error {
 	return nil
 }
 
-func (b *Board) ReceiveAttack(p Position) (bool, error) {
-	if p.X < 0 || p.X >= 10 || p.Y < 0 || p.Y >= 10 {
-		return false, errors.New("position out of bounds")
+func (b *Board) ReceiveAttack(p Position) (bool, bool, error) {
+	if isOutOfBounds(p) {
+		return false, false, errors.New("position out of bounds")
 	}
 
 	if b.ownFields[p.X][p.Y] == Taken {
 		b.ownFields[p.X][p.Y] = Hit
-		return true, nil
+		return true, b.ShipIsSunk(p), nil
 	} else {
 		b.ownFields[p.X][p.Y] = Miss
-		return false, nil
+		return false, false, nil
 	}
+}
+
+func (b *Board) ShipIsSunk(p Position) bool {
+	pos := Position{
+		X: p.X - 1,
+		Y: p.Y,
+	}
+	for !isOutOfBounds(pos) {
+		if b.ownFields[pos.X][pos.Y] == Taken {
+			return false
+		} else if b.ownFields[pos.X][pos.Y] == ShipArea {
+			break
+		}
+		pos.X--
+	}
+
+	pos = Position{
+		X: p.X + 1,
+		Y: p.Y,
+	}
+	for !isOutOfBounds(pos) {
+		if b.ownFields[pos.X][pos.Y] == Taken {
+			return false
+		} else if b.ownFields[pos.X][pos.Y] == ShipArea {
+			break
+		}
+		pos.X++
+	}
+
+	pos = Position{
+		X: p.X,
+		Y: p.Y - 1,
+	}
+	for !isOutOfBounds(pos) {
+		if b.ownFields[pos.X][pos.Y] == Taken {
+			return false
+		} else if b.ownFields[pos.X][pos.Y] == ShipArea {
+			break
+		}
+		pos.Y--
+	}
+
+	pos = Position{
+		X: p.X,
+		Y: p.Y + 1,
+	}
+	for !isOutOfBounds(pos) {
+		if b.ownFields[pos.X][pos.Y] == Taken {
+			return false
+		} else if b.ownFields[pos.X][pos.Y] == ShipArea {
+			break
+		}
+		pos.Y++
+	}
+
+	return true
 }
 
 func (b *Board) IsBeaten() bool {
@@ -223,4 +285,29 @@ func (b *Board) IsBeaten() bool {
 	}
 
 	return true
+}
+
+func isOutOfBounds(p Position) bool {
+	return p.X < 0 || p.X >= 10 || p.Y < 0 || p.Y >= 10
+}
+
+func getNeighbours(p Position) []Position {
+	return []Position{
+		{
+			X: p.X - 1,
+			Y: p.Y,
+		},
+		{
+			X: p.X + 1,
+			Y: p.Y,
+		},
+		{
+			X: p.X,
+			Y: p.Y - 1,
+		},
+		{
+			X: p.X,
+			Y: p.Y + 1,
+		},
+	}
 }

@@ -1,4 +1,4 @@
-package utils
+package web
 
 type Request struct {
 	PlayerId string                 `json:"playerId"`
