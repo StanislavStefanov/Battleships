@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/StanislavStefanov/Battleships/server/board"
-	"github.com/StanislavStefanov/Battleships/utils"
+	"github.com/StanislavStefanov/Battleships/pkg/board"
+	"github.com/StanislavStefanov/Battleships/pkg/web"
 	"github.com/gorilla/websocket"
 	"log"
 	"net/url"
 	"os"
-	"os/signal"
 	"strings"
 )
 
@@ -42,16 +41,18 @@ type Client struct {
 	board *board.Board
 }
 
-func printMessage(resp utils.Response) {
+func printMessage(resp web.Response) {
 	fmt.Println("---------------------")
 	fmt.Println("Status: ", resp.GetAction())
-	fmt.Println("Message: ", resp.GetMessage())
+	if len(resp.GetMessage()) > 0 {
+		fmt.Println("Message: ", resp.GetMessage())
+	}
 	if len(resp.GetArgs()) != 0 {
 		fmt.Println("Additional info: ", resp.GetArgs())
 	}
 }
 
-func (c *Client) processResponse(resp utils.Response) {
+func (c *Client) processResponse(resp web.Response) {
 	printMessage(resp)
 
 	switch resp.GetAction() {
@@ -60,33 +61,54 @@ func (c *Client) processResponse(resp utils.Response) {
 	case PlaceShip:
 		c.board.Print()
 	case Placed:
-		x := int(resp.Args["x"].(float64))
-		y := int(resp.Args["y"].(float64))
-		direction := resp.Args["direction"].(string)
-		length := int(resp.Args["length"].(float64))
-
-		ship := board.CreateShip(x, y, direction, length)
-		c.board.PlaceShip(ship)
+		c.placeShip(resp)
 		c.board.Print()
 	case ShootOutcome:
-		success := resp.Args["hit"].(bool)
-		x := resp.Args["x"].(int)
-		y := resp.Args["y"].(int)
-		c.board.Attack(board.Position{
-			X: x,
-			Y: y,
-		}, success)
+		c.processShootOutcome(resp)
 		c.board.Print()
 	case Shoot:
-		if len(resp.GetArgs()) != 0 {
-			x := resp.Args["x"].(int)
-			y := resp.Args["y"].(int)
-			c.board.ReceiveAttack(board.Position{
-				X: x,
-				Y: y,
-			})
-		}
+		c.receiveAttack(resp)
 		c.board.Print()
+	}
+}
+
+func extractCoordinates(resp web.Response) (int, int) {
+	x := int(resp.Args["x"].(float64))
+	y := int(resp.Args["y"].(float64))
+	return x, y
+}
+
+func (c *Client) placeShip(resp web.Response) {
+	x, y := extractCoordinates(resp)
+	direction := resp.Args["direction"].(string)
+	length := int(resp.Args["length"].(float64))
+
+	ship := board.CreateShip(x, y, direction, length)
+	err := c.board.PlaceShip(ship)
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
+func (c *Client) processShootOutcome(resp web.Response) {
+	success := resp.Args["hit"].(bool)
+	x, y := extractCoordinates(resp)
+	err := c.board.Attack(board.Position{
+		X: x,
+		Y: y,
+	}, success)
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
+func (c *Client) receiveAttack(resp web.Response) {
+	if len(resp.GetArgs()) != 0 {
+		x, y := extractCoordinates(resp)
+		c.board.ReceiveAttack(board.Position{
+			X: x,
+			Y: y,
+		})
 	}
 }
 
@@ -99,10 +121,9 @@ func readLoop(done chan<- struct{}, client *Client) {
 		_, bytes, err := client.conn.ReadMessage()
 
 		if err != nil {
-			fmt.Println("read error", err)
 			return
 		}
-		var resp utils.Response
+		var resp web.Response
 		json.Unmarshal(bytes, &resp)
 		client.processResponse(resp)
 	}
@@ -113,14 +134,13 @@ func writeLoop(done chan<- struct{}, client *Client) {
 		done <- struct{}{}
 	}()
 	for {
-		fmt.Println("enter action")
-		buf := bufio.NewReader(os.Stdin)
+		b, action, err := readAction()
+		if err != nil {
+			fmt.Println("An error has occurred. Please enter your command again")
+			continue
+		}
 
-		b, _ := buf.ReadBytes('\n')
-		action := string(b)
-		action = strings.TrimSuffix(action, "\n")
-
-		request := utils.BuildRequest(client.id, action, nil)
+		request := web.BuildRequest(client.id, action, nil)
 
 		switch action {
 		case Create:
@@ -128,80 +148,97 @@ func writeLoop(done chan<- struct{}, client *Client) {
 		case List:
 			sendRequest(request, client)
 		case Join:
-			fmt.Println("enter room ID")
-			buf := bufio.NewReader(os.Stdin)
-
-			b, _ := buf.ReadBytes('\n')
-			id := string(b)
-
-			id = strings.TrimSuffix(id, "\n")
-			args := map[string]interface{}{"roomId": id}
-			request.Args = args
-
-			sendRequest(request, client)
+			joinRoom(request, client)
 		case JoinRandom:
 			sendRequest(request, client)
 		case PlaceShip:
-
-			buf := bufio.NewReader(os.Stdin)
-
-			fmt.Println("enter x coordinate")
-			b, _ = buf.ReadBytes('\n')
-			x := string(b)
-			x = strings.TrimSuffix(x, "\n")
-
-			fmt.Println("enter y coordinate")
-			b, _ = buf.ReadBytes('\n')
-			y := string(b)
-			y = strings.TrimSuffix(y, "\n")
-
-			//b, _ := buf.ReadBytes('\n')
-			//x, _ := strconv.Atoi(strings.TrimSuffix(string(b), "\n"))
-			//
-			//fmt.Println("enter y coordinate")
-			//b, _ = buf.ReadBytes('\n')
-			//y, _ := strconv.Atoi(strings.TrimSuffix(string(b), "\n"))
-
-			fmt.Println("enter placement direction")
-			b, _ = buf.ReadBytes('\n')
-			direction := string(b)
-			direction = strings.TrimSuffix(direction, "\n")
-
-			args := map[string]interface{}{"x": x, "y": y, "direction": direction}
-			request.Args = args
-			sendRequest(request, client)
+			b = placeShipOnBoard(b, request, client)
 		case Shoot:
-			buf := bufio.NewReader(os.Stdin)
-
-			fmt.Println("enter x coordinate")
-			b, _ = buf.ReadBytes('\n')
-			x := string(b)
-			x = strings.TrimSuffix(x, "\n")
-
-			fmt.Println("enter y coordinate")
-			b, _ = buf.ReadBytes('\n')
-			y := string(b)
-			y = strings.TrimSuffix(y, "\n")
-
-			args := map[string]interface{}{"x": x, "y": y}
-			request.Args = args
-			sendRequest(request, client)
-
+			shootAtEnemy(b, request, client)
 		case Exit:
 			sendRequest(request, client)
 			return
-
 		}
 
 		marshal, _ := json.Marshal(request)
-		err := client.conn.WriteMessage(websocket.BinaryMessage, marshal)
+		err = client.conn.WriteMessage(websocket.BinaryMessage, marshal)
 		if err != nil {
-			fmt.Println(">>", err)
+			return
 		}
 	}
 }
 
-func sendRequest(request utils.Request, client *Client) {
+func readAction() ([]byte, string, error) {
+	fmt.Println("enter action")
+	buf := bufio.NewReader(os.Stdin)
+
+	b, err := buf.ReadBytes('\n')
+	if err != nil {
+		return nil, "", err
+	}
+
+	action := string(b)
+	action = strings.TrimSuffix(action, "\n")
+	return b, action, nil
+}
+
+func joinRoom(request web.Request, client *Client) {
+	fmt.Println("enter room ID")
+	buf := bufio.NewReader(os.Stdin)
+
+	b, _ := buf.ReadBytes('\n')
+	id := string(b)
+
+	id = strings.TrimSuffix(id, "\n")
+	args := map[string]interface{}{"roomId": id}
+	request.Args = args
+
+	sendRequest(request, client)
+}
+
+func placeShipOnBoard(b []byte, request web.Request, client *Client) []byte {
+	buf := bufio.NewReader(os.Stdin)
+
+	fmt.Println("enter x coordinate")
+	b, _ = buf.ReadBytes('\n')
+	x := string(b)
+	x = strings.TrimSuffix(x, "\n")
+
+	fmt.Println("enter y coordinate")
+	b, _ = buf.ReadBytes('\n')
+	y := string(b)
+	y = strings.TrimSuffix(y, "\n")
+
+	fmt.Println("enter placement direction")
+	b, _ = buf.ReadBytes('\n')
+	direction := string(b)
+	direction = strings.TrimSuffix(direction, "\n")
+
+	args := map[string]interface{}{"x": x, "y": y, "direction": direction}
+	request.Args = args
+	sendRequest(request, client)
+	return b
+}
+
+func shootAtEnemy(b []byte, request web.Request, client *Client) {
+	buf := bufio.NewReader(os.Stdin)
+
+	fmt.Println("enter x coordinate")
+	b, _ = buf.ReadBytes('\n')
+	x := string(b)
+	x = strings.TrimSuffix(x, "\n")
+
+	fmt.Println("enter y coordinate")
+	b, _ = buf.ReadBytes('\n')
+	y := string(b)
+	y = strings.TrimSuffix(y, "\n")
+
+	args := map[string]interface{}{"x": x, "y": y}
+	request.Args = args
+	sendRequest(request, client)
+}
+
+func sendRequest(request web.Request, client *Client) {
 	marshal, _ := json.Marshal(request)
 	err := client.conn.WriteMessage(websocket.BinaryMessage, marshal)
 	if err != nil {
@@ -210,12 +247,6 @@ func sendRequest(request utils.Request, client *Client) {
 }
 
 func main() {
-	flag.Parse()
-	log.SetFlags(0)
-
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-
 	u := url.URL{Scheme: "ws", Host: *addr, Path: "/ws"}
 	log.Printf("connecting to %s", u.String())
 
@@ -224,6 +255,7 @@ func main() {
 		log.Fatal("dial:", err)
 	}
 	defer c.Close()
+
 	client := &Client{
 		id:    "",
 		conn:  c,
