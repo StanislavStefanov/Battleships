@@ -3,8 +3,8 @@
 package automock
 
 import (
-	"github.com/StanislavStefanov/Battleships/utils"
-	websocket "github.com/gorilla/websocket"
+	utils "github.com/StanislavStefanov/Battleships/pkg/web"
+	player "github.com/StanislavStefanov/Battleships/server/player"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -14,6 +14,6 @@ type ResponseSender struct {
 }
 
 // SendResponse provides a mock function with given fields: response, conn
-func (_m *ResponseSender) SendResponse(response utils.Response, conn *websocket.Conn) {
+func (_m *ResponseSender) SendResponse(response utils.Response, conn player.Connection) {
 	_m.Called(response, conn)
 }

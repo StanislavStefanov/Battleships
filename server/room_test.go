@@ -1,10 +1,11 @@
 package main
 
 import (
+	"github.com/StanislavStefanov/Battleships/pkg"
+	"github.com/StanislavStefanov/Battleships/pkg/board"
+	"github.com/StanislavStefanov/Battleships/pkg/web"
 	"github.com/StanislavStefanov/Battleships/server/automock"
-	"github.com/StanislavStefanov/Battleships/server/board"
 	"github.com/StanislavStefanov/Battleships/server/player"
-	"github.com/StanislavStefanov/Battleships/utils"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -14,9 +15,9 @@ func TestRoom_GetNextShipSize(t *testing.T) {
 	t.Run("get all ship sizes", func(t *testing.T) {
 		// when
 		room := CreateRoom("", nil, nil)
-		expectedSizes := []int{5, 5, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2}
+		expectedSizes := []int{5, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2}
 		// then
-		for i := 0; i < 20; i++ {
+		for i := 0; i < 19; i++ {
 			size, err := room.getNextShipSize()
 			assert.NoError(t, err)
 			assert.Equal(t, expectedSizes[i], size)
@@ -114,103 +115,97 @@ func getBoardWithOneTakenField(x, y int) *board.Board {
 
 func TestShip_ProcessCommand(t *testing.T) {
 	var (
-		waitResp = utils.Response{
-			Action:  Wait,
+		waitResp = web.Response{
+			Action:  pkg.Wait,
 			Message: "Wait for enemy to make his turn.",
 			Args:    nil,
 		}
 
-		invalidActionResp = utils.Response{
-			Action:  Retry,
+		invalidActionResp = web.Response{
+			Action:  pkg.Retry,
 			Message: "Invalid action during Phase: place.",
 			Args:    nil,
 		}
 
-		missingXResp = utils.Response{
-			Action:  Retry,
+		missingXResp = web.Response{
+			Action:  pkg.Retry,
 			Message: "missing value for x",
 			Args:    nil,
 		}
 
-		incorrectValueTypeResp = utils.Response{
-			Action:  Retry,
+		incorrectValueTypeResp = web.Response{
+			Action:  pkg.Retry,
 			Message: "invalid value for y",
 			Args:    nil,
 		}
 
-		missingValueForDirectionResp = utils.Response{
-			Action:  Retry,
+		missingValueForDirectionResp = web.Response{
+			Action:  pkg.Retry,
 			Message: "missing value for direction",
 			Args:    nil,
 		}
 
-		incorrectValueTypeForDirectionResp = utils.Response{
-			Action:  Retry,
+		incorrectValueTypeForDirectionResp = web.Response{
+			Action:  pkg.Retry,
 			Message: "invalid value for direction",
 			Args:    nil,
 		}
 
-		missingValueForLengthResp = utils.Response{
-			Action:  Retry,
-			Message: "missing value for length",
-			Args:    nil,
-		}
-
-		incorrectValueTypeForLengthResp = utils.Response{
-			Action:  Retry,
-			Message: "invalid value for length",
-			Args:    nil,
-		}
-
-		shipPlacedSuccessfullyResp = utils.Response{
-			Action:  Wait,
+		shipPlacedSuccessfullyResp = web.Response{
+			Action:  pkg.Placed,
 			Message: "Ship placed successfully. Wait for opponent to make his turn.",
-			Args:    nil,
+			Args:    map[string]interface{}{"direction": "down", "length": 5, "x": 2, "y": 2},
 		}
 
-		placeShipResp = utils.Response{
-			Action:  PlaceShip,
+		lastShipPlacedSuccessfullyResp = web.Response{
+			Action:  pkg.Placed,
+			Message: "Ship placed successfully. Wait for opponent to make his turn.",
+			Args:    map[string]interface{}{"direction": "down", "length": 2, "x": 2, "y": 2},
+		}
+
+		placeShipResp = web.Response{
+			Action:  pkg.PlaceShip,
 			Message: "Select where to place ship with length 5",
 			Args:    nil,
 		}
 
-		shootResp = utils.Response{
-			Action:  Shoot,
+		shootResp = web.Response{
+			Action:  pkg.Shoot,
 			Message: "Select filed to attack.",
 			Args:    nil,
 		}
 
-		shootOutOfBoundsResp = utils.Response{
-			Action:  Retry,
+		shootOutOfBoundsResp = web.Response{
+			Action:  pkg.Retry,
 			Message: "position out of bounds",
 			Args:    nil,
 		}
 
-		shootHitResp = utils.Response{
-			Action:  Wait,
+		shootHitResp = web.Response{
+			Action:  pkg.ShootOutcome,
 			Message: "",
-			Args:    map[string]interface{}{"hit": true, "x": 3, "y": 3},
+			Args:    map[string]interface{}{"hit": true, "sunk": false, "x": 3, "y": 3},
 		}
 
-		shootWithArgsResp = utils.Response{
-			Action:  Shoot,
+		shootWithArgsResp = web.Response{
+			Action:  pkg.Shoot,
 			Message: "Select filed to attack.",
-			Args:    map[string]interface{}{"hit": true, "x": 3, "y": 3},
+			Args:    map[string]interface{}{"hit": true, "sunk": false, "x": 3, "y": 3},
 		}
 
-		winResp = utils.Response{
-			Action:  Win,
+		winResp = web.Response{
+			Action:  pkg.Win,
 			Message: "Congratulations, you win!",
 			Args:    nil,
 		}
 
-		defeatResp = utils.Response{
-			Action:  Lose,
+		defeatResp = web.Response{
+			Action:  pkg.Lose,
 			Message: "Defeat!",
 			Args:    nil,
 		}
-		exitResp = utils.Response{
-			Action:  Win,
+		exitResp = web.Response{
+			Action:  pkg.Win,
 			Message: "Your opponent exited the game. Congratulations, you win!",
 			Args:    nil,
 		}
@@ -221,7 +216,7 @@ func TestShip_ProcessCommand(t *testing.T) {
 	testCases := []struct {
 		Name           string
 		Room           *Room
-		Request        utils.Request
+		Request        web.Request
 		Phase          string
 		CurrentID      string
 		NextID         string
@@ -237,12 +232,12 @@ func TestShip_ProcessCommand(t *testing.T) {
 					Id:   secondID,
 					Conn: secondConn,
 				},
-				Phase: PlaceShip,
+				Phase: pkg.PlaceShip,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: secondID,
 			},
-			Phase:     PlaceShip,
+			Phase:     pkg.PlaceShip,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -261,13 +256,13 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Next: &player.Player{
 					Id: secondID,
 				},
-				Phase: PlaceShip,
+				Phase: pkg.PlaceShip,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   Shoot,
+				Action:   pkg.Shoot,
 			},
-			Phase:     PlaceShip,
+			Phase:     pkg.PlaceShip,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -286,13 +281,13 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Next: &player.Player{
 					Id: secondID,
 				},
-				Phase: PlaceShip,
+				Phase: pkg.PlaceShip,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   PlaceShip,
+				Action:   pkg.PlaceShip,
 			},
-			Phase:     PlaceShip,
+			Phase:     pkg.PlaceShip,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -311,14 +306,14 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Next: &player.Player{
 					Id: secondID,
 				},
-				Phase: PlaceShip,
+				Phase: pkg.PlaceShip,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   PlaceShip,
-				Args:     map[string]interface{}{"x": 2, "y": "y"},
+				Action:   pkg.PlaceShip,
+				Args:     map[string]interface{}{"x": "2", "y": "y"},
 			},
-			Phase:     PlaceShip,
+			Phase:     pkg.PlaceShip,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -337,14 +332,14 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Next: &player.Player{
 					Id: secondID,
 				},
-				Phase: PlaceShip,
+				Phase: pkg.PlaceShip,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   PlaceShip,
-				Args:     map[string]interface{}{"x": 2, "y": 2},
+				Action:   pkg.PlaceShip,
+				Args:     map[string]interface{}{"x": "2", "y": "2"},
 			},
-			Phase:     PlaceShip,
+			Phase:     pkg.PlaceShip,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -363,71 +358,19 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Next: &player.Player{
 					Id: secondID,
 				},
-				Phase: PlaceShip,
+				Phase: pkg.PlaceShip,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   PlaceShip,
-				Args:     map[string]interface{}{"x": 2, "y": 2, "direction": player.Player{}},
+				Action:   pkg.PlaceShip,
+				Args:     map[string]interface{}{"x": "2", "y": "2", "direction": player.Player{}},
 			},
-			Phase:     PlaceShip,
+			Phase:     pkg.PlaceShip,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
 				sender := &automock.ResponseSender{}
 				sender.On("SendResponse", incorrectValueTypeForDirectionResp, firstConn).Return(nil).Once()
-				return sender
-			},
-		},
-		{
-			Name: "fail when length is missing",
-			Room: &Room{
-				Current: &player.Player{
-					Id:   firstID,
-					Conn: firstConn,
-				},
-				Next: &player.Player{
-					Id: secondID,
-				},
-				Phase: PlaceShip,
-			},
-			Request: utils.Request{
-				PlayerId: firstID,
-				Action:   PlaceShip,
-				Args:     map[string]interface{}{"x": 2, "y": 2, "direction": "down"},
-			},
-			Phase:     PlaceShip,
-			CurrentID: firstID,
-			NextID:    secondID,
-			ResponseSender: func() *automock.ResponseSender {
-				sender := &automock.ResponseSender{}
-				sender.On("SendResponse", missingValueForLengthResp, firstConn).Return(nil).Once()
-				return sender
-			},
-		},
-		{
-			Name: "fail when length has incorrect type",
-			Room: &Room{
-				Current: &player.Player{
-					Id:   firstID,
-					Conn: firstConn,
-				},
-				Next: &player.Player{
-					Id: secondID,
-				},
-				Phase: PlaceShip,
-			},
-			Request: utils.Request{
-				PlayerId: firstID,
-				Action:   PlaceShip,
-				Args:     map[string]interface{}{"x": 2, "y": 2, "direction": "down", "length": "invalid"},
-			},
-			Phase:     PlaceShip,
-			CurrentID: firstID,
-			NextID:    secondID,
-			ResponseSender: func() *automock.ResponseSender {
-				sender := &automock.ResponseSender{}
-				sender.On("SendResponse", incorrectValueTypeForLengthResp, firstConn).Return(nil).Once()
 				return sender
 			},
 		},
@@ -443,16 +386,16 @@ func TestShip_ProcessCommand(t *testing.T) {
 					Id:   secondID,
 					Conn: secondConn,
 				},
-				Phase:           PlaceShip,
+				Phase:           pkg.PlaceShip,
 				ShipSizeToCount: map[int]int{destroyer: destroyerCount},
 				NextShipSize:    destroyer,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   PlaceShip,
-				Args:     map[string]interface{}{"x": 2, "y": 2, "direction": "down", "length": 5},
+				Action:   pkg.PlaceShip,
+				Args:     map[string]interface{}{"x": "2", "y": "2", "direction": "down", "length": 5},
 			},
-			Phase:     PlaceShip,
+			Phase:     pkg.PlaceShip,
 			CurrentID: secondID,
 			NextID:    firstID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -474,21 +417,21 @@ func TestShip_ProcessCommand(t *testing.T) {
 					Id:   secondID,
 					Conn: secondConn,
 				},
-				Phase:           PlaceShip,
+				Phase:           pkg.PlaceShip,
 				ShipSizeToCount: map[int]int{boat: 0},
 				NextShipSize:    boat,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   PlaceShip,
-				Args:     map[string]interface{}{"x": 2, "y": 2, "direction": "down", "length": 2},
+				Action:   pkg.PlaceShip,
+				Args:     map[string]interface{}{"x": "2", "y": "2", "direction": "down", "length": 2},
 			},
-			Phase:     Shoot,
+			Phase:     pkg.Shoot,
 			CurrentID: secondID,
 			NextID:    firstID,
 			ResponseSender: func() *automock.ResponseSender {
 				sender := &automock.ResponseSender{}
-				sender.On("SendResponse", shipPlacedSuccessfullyResp, firstConn).Return(nil).Once()
+				sender.On("SendResponse", lastShipPlacedSuccessfullyResp, firstConn).Return(nil).Once()
 				sender.On("SendResponse", shootResp, secondConn).Return(nil).Once()
 				return sender
 			},
@@ -503,13 +446,13 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Next: &player.Player{
 					Id: secondID,
 				},
-				Phase: Shoot,
+				Phase: pkg.Shoot,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   Shoot,
+				Action:   pkg.Shoot,
 			},
-			Phase:     Shoot,
+			Phase:     pkg.Shoot,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -528,14 +471,14 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Next: &player.Player{
 					Id: secondID,
 				},
-				Phase: Shoot,
+				Phase: pkg.Shoot,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   Shoot,
-				Args:     map[string]interface{}{"x": 2, "y": "y"},
+				Action:   pkg.Shoot,
+				Args:     map[string]interface{}{"x": "2", "y": "y"},
 			},
-			Phase:     Shoot,
+			Phase:     pkg.Shoot,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -554,14 +497,14 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Next: &player.Player{
 					Id: secondID,
 				},
-				Phase: Shoot,
+				Phase: pkg.Shoot,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   Shoot,
-				Args:     map[string]interface{}{"x": 2, "y": 12},
+				Action:   pkg.Shoot,
+				Args:     map[string]interface{}{"x": "2", "y": "12"},
 			},
-			Phase:     Shoot,
+			Phase:     pkg.Shoot,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -583,14 +526,14 @@ func TestShip_ProcessCommand(t *testing.T) {
 					Conn:  secondConn,
 					Board: getBoard(),
 				},
-				Phase: Shoot,
+				Phase: pkg.Shoot,
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   Shoot,
-				Args:     map[string]interface{}{"x": 3, "y": 3},
+				Action:   pkg.Shoot,
+				Args:     map[string]interface{}{"x": "3", "y": "3"},
 			},
-			Phase:     Shoot,
+			Phase:     pkg.Shoot,
 			CurrentID: secondID,
 			NextID:    firstID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -613,15 +556,15 @@ func TestShip_ProcessCommand(t *testing.T) {
 					Conn:  secondConn,
 					Board: getBoardWithOneTakenField(3, 3),
 				},
-				Phase: Shoot,
+				Phase: pkg.Shoot,
 				Done:  make(chan struct{}, 1),
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   Shoot,
-				Args:     map[string]interface{}{"x": 3, "y": 3},
+				Action:   pkg.Shoot,
+				Args:     map[string]interface{}{"x": "3", "y": "3"},
 			},
-			Phase:     Shoot,
+			Phase:     pkg.Shoot,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {
@@ -640,18 +583,18 @@ func TestShip_ProcessCommand(t *testing.T) {
 					Board: board.InitBoard(),
 				},
 				Next: &player.Player{
-					Id:    secondID,
-					Conn:  secondConn,
+					Id:   secondID,
+					Conn: secondConn,
 				},
-				Phase: Shoot,
+				Phase: pkg.Shoot,
 				Done:  make(chan struct{}, 1),
 			},
-			Request: utils.Request{
+			Request: web.Request{
 				PlayerId: firstID,
-				Action:   Exit,
+				Action:   pkg.Exit,
 				Args:     nil,
 			},
-			Phase:     Shoot,
+			Phase:     pkg.Shoot,
 			CurrentID: firstID,
 			NextID:    secondID,
 			ResponseSender: func() *automock.ResponseSender {

@@ -1,18 +1,22 @@
 package player
 
 import (
-	"github.com/StanislavStefanov/Battleships/server/board"
-	"github.com/gorilla/websocket"
+	"github.com/StanislavStefanov/Battleships/pkg/board"
 )
 
-type Player struct {
-	Conn *websocket.Conn
-	Board *board.Board
-	Id   string
+//go:generate mockery -name=Connection -output=automock -outpkg=automock -case=underscore
+type Connection interface {
+	WriteMessage(int, []byte) error
+	Close() error
+	ReadMessage() (int, []byte, error)
 }
 
-func (p *Player) PlaceShip(ship board.Ship) error{
+type Player struct {
+	Conn  Connection
+	Board *board.Board
+	Id    string
+}
+
+func (p *Player) PlaceShip(ship board.Ship) error {
 	return p.Board.PlaceShip(ship)
 }
-
-
