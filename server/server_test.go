@@ -32,7 +32,7 @@ func TestServer_Delete(t *testing.T) {
 			sender:  responseSender,
 			UUID:    uuid.UUID{},
 		}
-		client := s.registerClient(con)
+		client := s.RegisterClient(con)
 		// then
 		s.deletePlayer(client.Id)
 		_, ok := s.clients[client.Id]
@@ -89,7 +89,7 @@ func TestServer_ListRooms(t *testing.T) {
 		}
 
 		// then
-		rooms := s.listRooms()
+		rooms := s.ListRooms()
 		plCount, ok := rooms[id1]
 		assert.True(t, ok)
 		assert.Equal(t, 0, plCount)
@@ -120,7 +120,7 @@ func TestServer_CreateRoom(t *testing.T) {
 		}
 
 		// then
-		room := s.createRoom("player")
+		room := s.CreateRoom("player")
 		_, ok := s.rooms[room.Id]
 		assert.True(t, ok)
 		_, ok = s.connectRoom[room.Id]
@@ -154,7 +154,7 @@ func TestServer_JoinRoom(t *testing.T) {
 			Conn: con,
 		}
 		// then
-		result := s.joinRoom("nonexisting", pl)
+		result := s.JoinRoom("nonexisting", pl)
 		assert.False(t, result)
 	})
 	t.Run("fail when room is already full", func(t *testing.T) {
@@ -187,7 +187,7 @@ func TestServer_JoinRoom(t *testing.T) {
 			Conn: con,
 		}
 		// then
-		result := s.joinRoom("room", pl)
+		result := s.JoinRoom("room", pl)
 		assert.False(t, result)
 	})
 	t.Run("success", func(t *testing.T) {
@@ -213,7 +213,7 @@ func TestServer_JoinRoom(t *testing.T) {
 		}
 
 		// then
-		result := s.joinRoom("room", pl)
+		result := s.JoinRoom("room", pl)
 		assert.True(t, result)
 		joined := <-connect
 		assert.Equal(t, pl, joined)
@@ -244,7 +244,7 @@ func TestServer_JoinRandomRoom(t *testing.T) {
 			Conn: con,
 		}
 		// then
-		result := s.joinRandomRoom(pl)
+		result := s.JoinRandomRoom(pl)
 		assert.False(t, result)
 	})
 	t.Run("fail when there are no free places in the rooms", func(t *testing.T) {
@@ -274,7 +274,7 @@ func TestServer_JoinRandomRoom(t *testing.T) {
 			Conn: con,
 		}
 		// then
-		result := s.joinRandomRoom(pl)
+		result := s.JoinRandomRoom(pl)
 		assert.False(t, result)
 	})
 	t.Run("success", func(t *testing.T) {
@@ -300,7 +300,7 @@ func TestServer_JoinRandomRoom(t *testing.T) {
 		}
 
 		// then
-		result := s.joinRandomRoom(pl)
+		result := s.JoinRandomRoom(pl)
 		assert.True(t, result)
 		joined := <-connect
 		assert.Equal(t, pl, joined)
@@ -330,7 +330,7 @@ func TestServer_ReadLoop(t *testing.T) {
 		}
 
 		// then
-		readLoop(pl, s)
+		ReadLoop(pl, s)
 
 		_, ok := s.clients["player"]
 		assert.False(t, ok)
@@ -391,7 +391,7 @@ func TestServer_ReadLoop(t *testing.T) {
 		}
 
 		// then
-		readLoop(pl, s)
+		ReadLoop(pl, s)
 
 		_, ok := s.clients["player"]
 		assert.False(t, ok)
@@ -428,7 +428,7 @@ func TestServer_ReadLoop(t *testing.T) {
 		}
 
 		// then
-		readLoop(pl, s)
+		ReadLoop(pl, s)
 
 		assert.Equal(t, 1, len(s.rooms))
 
@@ -479,7 +479,7 @@ func TestServer_ReadLoop(t *testing.T) {
 		}
 
 		// then
-		readLoop(pl, s)
+		ReadLoop(pl, s)
 
 		_, ok := s.clients["player"]
 		assert.False(t, ok)
@@ -524,7 +524,7 @@ func TestServer_ReadLoop(t *testing.T) {
 		}
 
 		// then
-		readLoop(pl, s)
+		ReadLoop(pl, s)
 
 		con.AssertExpectations(t)
 	})
@@ -565,7 +565,7 @@ func TestServer_ReadLoop(t *testing.T) {
 		}
 
 		// then
-		readLoop(pl, s)
+		ReadLoop(pl, s)
 
 		_, ok := s.clients["player"]
 		assert.False(t, ok)
@@ -610,7 +610,7 @@ func TestServer_ReadLoop(t *testing.T) {
 		}
 
 		// then
-		readLoop(pl, s)
+		ReadLoop(pl, s)
 
 		con.AssertExpectations(t)
 	})
@@ -647,7 +647,7 @@ func TestServer_ReadLoop(t *testing.T) {
 		}
 
 		// then
-		readLoop(pl, s)
+		ReadLoop(pl, s)
 
 		_, ok := s.clients["player"]
 		assert.False(t, ok)
@@ -673,7 +673,7 @@ func TestServer_ReadLoop(t *testing.T) {
 		}
 
 		// then
-		readLoop(pl, s)
+		ReadLoop(pl, s)
 
 		_, ok := s.clients["player"]
 		assert.False(t, ok)
@@ -732,7 +732,7 @@ func TestServer_RunRoom(t *testing.T) {
 			ShipSizeToCount: nil,
 			NextShipSize:    0,
 			Id:              "room",
-			ResponseSender:  &Sender{},
+			Sender:          &Sender{},
 		}
 		create := web.BuildRequest("first", "test", nil)
 		room.First <- create
@@ -744,7 +744,7 @@ func TestServer_RunRoom(t *testing.T) {
 		}
 
 		// then
-		s.runRoom(room, nil)
+		s.RunRoom(room, nil)
 
 		assert.Equal(t, 0, len(s.rooms))
 		assert.Equal(t, 0, len(s.connectRoom))
@@ -802,12 +802,12 @@ func TestServer_RunRoom(t *testing.T) {
 		}()
 
 		room := &Room{
-			Current:        first,
-			ResponseSender: &Sender{},
-			FirstExit:      firstExit,
-			SecondExit:     secondExit,
-			Id:             "room",
-			Done:           done,
+			Current:    first,
+			Sender:     &Sender{},
+			FirstExit:  firstExit,
+			SecondExit: secondExit,
+			Id:         "room",
+			Done:       done,
 		}
 
 		s := &Server{
@@ -818,7 +818,7 @@ func TestServer_RunRoom(t *testing.T) {
 		join := make(chan *player.Player, 1)
 		join <- second
 		// then
-		s.runRoom(room, join)
+		s.RunRoom(room, join)
 
 		time.Sleep(1 * time.Second)
 		firstConn.AssertExpectations(t)
@@ -867,14 +867,14 @@ func TestServer_RunRoom(t *testing.T) {
 		input <- exit
 
 		room := &Room{
-			Current:        first,
-			Next:           second,
-			Second:         input,
-			ResponseSender: &Sender{},
-			FirstExit:      firstExit,
-			SecondExit:     secondExit,
-			Id:             "room",
-			Done:           make(chan struct{}, 1),
+			Current:    first,
+			Next:       second,
+			Second:     input,
+			Sender:     &Sender{},
+			FirstExit:  firstExit,
+			SecondExit: secondExit,
+			Id:         "room",
+			Done:       make(chan struct{}, 1),
 		}
 
 		s := &Server{
@@ -883,7 +883,7 @@ func TestServer_RunRoom(t *testing.T) {
 		}
 
 		// then
-		s.runRoom(room, nil)
+		s.RunRoom(room, nil)
 
 		firstConn.AssertExpectations(t)
 		secondConn.AssertExpectations(t)
@@ -922,9 +922,9 @@ func TestServer_joinRunningRoom(t *testing.T) {
 		}
 
 		room := &Room{
-			Current:        first,
-			ResponseSender: &Sender{},
-			Id:             "room",
+			Current: first,
+			Sender:  &Sender{},
+			Id:      "room",
 		}
 
 		s := &Server{

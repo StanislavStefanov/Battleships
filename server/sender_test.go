@@ -65,4 +65,3 @@ func TestSender_SendResponse(t *testing.T) {
 		con.AssertExpectations(t)
 	})
 }
-

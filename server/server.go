@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/StanislavStefanov/Battleships/pkg"
-	"github.com/StanislavStefanov/Battleships/pkg/board"
+	"github.com/StanislavStefanov/Battleships/pkg/game"
 	"github.com/StanislavStefanov/Battleships/pkg/web"
 	"github.com/StanislavStefanov/Battleships/server/player"
 	"github.com/google/uuid"
@@ -29,6 +29,9 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+//ServeWs upgrades the HTTP server connection to WebSocket protocol. Then registers client
+//to whom the connection is attached and spawns new goroutine which will listen for messages
+//on the connection.
 func ServeWs(s *Server, w http.ResponseWriter, r *http.Request) {
 	fmt.Println("connection has arrived")
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -43,21 +46,24 @@ func (s *Server) run() {
 	for {
 		select {
 		case conn := <-s.register:
-			pl := s.registerClient(conn)
+			pl := s.RegisterClient(conn)
 			if pl != nil {
-				go readLoop(pl, s)
+				go ReadLoop(pl, s)
 			}
 		}
 	}
 }
 
-func (s *Server) registerClient(conn *websocket.Conn) *player.Player {
+//RegisterClient wraps the provided connection into Player and stores it into the server. The PLayer
+//is assigned id(string). After the player is created the id is send back through the connection in
+//args (key: "id") of a Response with action "register".
+func (s *Server) RegisterClient(conn *websocket.Conn) *player.Player {
 	playerId := uuid.New().String()
 	fmt.Printf("register %s \n", playerId)
 
 	pl := &player.Player{
 		Conn:  conn,
-		Board: board.InitBoard(),
+		Board: game.InitBoard(),
 		Id:    playerId}
 	s.clients[playerId] = pl
 
@@ -67,7 +73,10 @@ func (s *Server) registerClient(conn *websocket.Conn) *player.Player {
 	return pl
 }
 
-func readLoop(player *player.Player, s *Server) {
+//ReadLoop reads requests send by the player and calls server methods based of the action stated into the request.
+//All valid actions are: exit, ls-rooms, create-room,join-room,join-random. If there is something wrong with the
+//request or the command is not recognised by the server Response with status Retry is sent back through the connection.
+func ReadLoop(player *player.Player, s *Server) {
 	for {
 		_, bytes, err := player.Conn.ReadMessage()
 		if err != nil {
@@ -89,12 +98,12 @@ func readLoop(player *player.Player, s *Server) {
 			_ = player.Conn.Close()
 			return
 		case pkg.ListRooms:
-			rooms := s.listRooms()
+			rooms := s.ListRooms()
 			resp := web.BuildResponse(pkg.Info, "Rooms: ", rooms)
 			s.sender.SendResponse(resp, player.Conn)
 		case pkg.CreateRoom:
-			room := s.createRoom(player.Id)
-			go s.runRoom(room, s.connectRoom[room.Id])
+			room := s.CreateRoom(player.Id)
+			go s.RunRoom(room, s.connectRoom[room.Id])
 			return
 		case pkg.JoinRoom:
 			roomId, ok := request.Args["roomId"].(string)
@@ -103,12 +112,12 @@ func readLoop(player *player.Player, s *Server) {
 				s.sender.SendResponse(resp, player.Conn)
 				continue
 			}
-			if s.joinRoom(roomId, player) {
+			if s.JoinRoom(roomId, player) {
 				return
 			}
 
 		case pkg.JoinRandom:
-			if s.joinRandomRoom(player) {
+			if s.JoinRandomRoom(player) {
 				return
 			}
 		default:
@@ -122,7 +131,10 @@ func (s *Server) deletePlayer(id string) {
 	delete(s.clients, id)
 }
 
-func (s *Server) listRooms() map[string]interface{} {
+//ListRooms returns structured information about the rooms. The keys value pairs of the returned map contain:
+//key = room id`s and values count of player in the room. The possible values are: 1 - there is only one player
+//in the room and tha game hasn't started yet, 2 - the room is full and the game is in progress
+func (s *Server) ListRooms() map[string]interface{} {
 	roomsInfo := make(map[string]interface{})
 	for _, r := range s.rooms {
 		name, playersCount := r.GetRoomInfo()
@@ -131,7 +143,9 @@ func (s *Server) listRooms() map[string]interface{} {
 	return roomsInfo
 }
 
-func (s *Server) createRoom(clientId string) *Room {
+//CreateRoom creates new room and sets the player corresponding to the provided id as First to play.
+//The player is removed from the list of clients stored on the server as he is already room`s responsibility.
+func (s *Server) CreateRoom(clientId string) *Room {
 	roomID := uuid.New().String()
 	p := s.clients[clientId]
 	room := CreateRoom(roomID, p, make(chan struct{}, 1))
@@ -143,7 +157,10 @@ func (s *Server) createRoom(clientId string) *Room {
 	return &room
 }
 
-func (s *Server) joinRoom(roomID string, player *player.Player) bool {
+//JoinRoom connects the player to the desired room. This will set him as Second to play and
+//will notify the First player that he can make his turn. If the room doesn't exist or if it is
+//already full the player will be notified with Response with status Retry and appropriate message.
+func (s *Server) JoinRoom(roomID string, player *player.Player) bool {
 	room := s.rooms[roomID]
 	if room == nil {
 		resp := web.BuildResponse(pkg.Retry, fmt.Sprintf("room with id %s doesnt exist", roomID), nil)
@@ -165,7 +182,9 @@ func (s *Server) joinRoom(roomID string, player *player.Player) bool {
 	return true
 }
 
-func (s *Server) joinRandomRoom(player *player.Player) bool {
+//JoinRandomRoom searches for room with free place. If such room is found the player will join it.
+//If there is no free room the player will receive Response with action Retry and appropriate message.
+func (s *Server) JoinRandomRoom(player *player.Player) bool {
 	roomID := s.findRoom()
 	if roomID == "" {
 		resp := web.BuildResponse(pkg.Retry, "there are no free rooms at the moment", nil)
@@ -173,7 +192,7 @@ func (s *Server) joinRandomRoom(player *player.Player) bool {
 		return false
 	}
 
-	return s.joinRoom(roomID, player)
+	return s.JoinRoom(roomID, player)
 }
 
 func (s *Server) findRoom() string {
@@ -186,12 +205,14 @@ func (s *Server) findRoom() string {
 	return ""
 }
 
-func (s *Server) runRoom(r *Room, join chan *player.Player) {
+//RunRoom starts new room. Separate goroutines are spawned for the players. The room listens for commands on
+//it's channels(one for each player) and on the provided join channel, where the second player should be received.
+func (s *Server) RunRoom(r *Room, join chan *player.Player) {
 	var wg = &sync.WaitGroup{}
 	fmt.Println("Start room")
 
 	wg.Add(1)
-	go playerReadLoop(r.Current.Conn, r.First, wg, r.FirstExit)
+	go PlayerReadLoop(r.Current.Conn, r.First, wg, r.FirstExit)
 
 	resp := web.BuildResponse(pkg.Wait,
 		fmt.Sprintf("You have created room %s. Wait for an opponent to join the room.", r.Id),
@@ -231,18 +252,21 @@ func (s *Server) joinRunningRoom(r *Room, secondPlayer *player.Player, wg *sync.
 			nil)
 		s.sender.SendResponse(resp, secondPlayer.Conn)
 
-		go playerReadLoop(secondPlayer.Conn, r.Second, wg, secondExit)
+		go PlayerReadLoop(secondPlayer.Conn, r.Second, wg, secondExit)
 
 		r.Phase = pkg.PlaceShip
 
 		resp = web.BuildResponse(pkg.PlaceShip,
 			fmt.Sprintf("Select where to place ship with length %d", destroyer),
 			nil)
-		r.ResponseSender.SendResponse(resp, r.Current.Conn)
+		r.Sender.SendResponse(resp, r.Current.Conn)
 	}
 }
 
-func playerReadLoop(conn player.Connection, play chan web.Request, wg *sync.WaitGroup, exit chan struct{}) {
+//PlayerReadLoop reads requests send by the player through it's connection and forwards the
+//to the room through the play channel. The function will exit it's body if a message is sent
+//through the exit channel.
+func PlayerReadLoop(conn player.Connection, play chan web.Request, wg *sync.WaitGroup, exit chan struct{}) {
 	fmt.Println("start Current read loop")
 	defer wg.Done()
 

@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/StanislavStefanov/Battleships/pkg"
-	"github.com/StanislavStefanov/Battleships/pkg/board"
+	"github.com/StanislavStefanov/Battleships/pkg/game"
 	"github.com/StanislavStefanov/Battleships/pkg/web"
 	"github.com/StanislavStefanov/Battleships/server/automock"
 	"github.com/StanislavStefanov/Battleships/server/player"
@@ -99,16 +99,16 @@ func TestRoom_GetRoomInfo(t *testing.T) {
 var firstConn = &websocket.Conn{}
 var secondConn = &websocket.Conn{}
 
-func getBoard() *board.Board {
-	b := board.InitBoard()
-	ship := board.CreateShip(3, 3, "down", 4)
+func getBoard() *game.Board {
+	b := game.InitBoard()
+	ship := game.CreateShip(3, 3, "down", 4)
 	b.PlaceShip(ship)
 	return b
 }
 
-func getBoardWithOneTakenField(x, y int) *board.Board {
-	b := board.InitBoard()
-	ship := board.CreateShip(x, y, "down", 1)
+func getBoardWithOneTakenField(x, y int) *game.Board {
+	b := game.InitBoard()
+	ship := game.CreateShip(x, y, "down", 1)
 	b.PlaceShip(ship)
 	return b
 }
@@ -380,7 +380,7 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Current: &player.Player{
 					Id:    firstID,
 					Conn:  firstConn,
-					Board: board.InitBoard(),
+					Board: game.InitBoard(),
 				},
 				Next: &player.Player{
 					Id:   secondID,
@@ -411,7 +411,7 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Current: &player.Player{
 					Id:    firstID,
 					Conn:  firstConn,
-					Board: board.InitBoard(),
+					Board: game.InitBoard(),
 				},
 				Next: &player.Player{
 					Id:   secondID,
@@ -519,7 +519,7 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Current: &player.Player{
 					Id:    firstID,
 					Conn:  firstConn,
-					Board: board.InitBoard(),
+					Board: game.InitBoard(),
 				},
 				Next: &player.Player{
 					Id:    secondID,
@@ -549,7 +549,7 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Current: &player.Player{
 					Id:    firstID,
 					Conn:  firstConn,
-					Board: board.InitBoard(),
+					Board: game.InitBoard(),
 				},
 				Next: &player.Player{
 					Id:    secondID,
@@ -580,7 +580,7 @@ func TestShip_ProcessCommand(t *testing.T) {
 				Current: &player.Player{
 					Id:    firstID,
 					Conn:  firstConn,
-					Board: board.InitBoard(),
+					Board: game.InitBoard(),
 				},
 				Next: &player.Player{
 					Id:   secondID,
@@ -610,7 +610,7 @@ func TestShip_ProcessCommand(t *testing.T) {
 			// when
 			respSender := testCase.ResponseSender()
 			room := testCase.Room
-			room.ResponseSender = respSender
+			room.Sender = respSender
 			room.ProcessCommand(testCase.Request)
 
 			// then

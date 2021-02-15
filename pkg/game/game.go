@@ -1,4 +1,4 @@
-package board
+package game
 
 import (
 	"errors"
@@ -61,6 +61,10 @@ func (s *Ship) GetLength() int {
 	return s.length
 }
 
+//GetPositions returns the Positions on which the ship will be placed. The slice of positions
+//is generated based on the ship length, starting point(x,y) and direction. A ship can be
+//placed horizontally or vertically. All valid directions are up, down, left and right. If
+//invalid direction is provided an error will be returned.
 func (s *Ship) GetPositions() ([]Position, error) {
 	start := Position{
 		X: s.x,
@@ -139,6 +143,7 @@ func initFields() [][]rune {
 	return fields
 }
 
+//InitBoard returns board with all own and enemy fields set to empty(_).
 func InitBoard() *Board {
 	return &Board{
 		ownFields:   initFields(),
@@ -169,6 +174,9 @@ func (b *Board) Print() {
 	printBoard(b.ownFields)
 }
 
+//PlaceShip marks the fields of the ship on own fields as taken(s) and the neighboring fields
+//as ship area(b). If any of the ship's fields is out of bounds or is not empty(_) an error
+//is returned and the ship is not placed on the board.
 func (b *Board) PlaceShip(ship Ship) error {
 	positions, err := ship.GetPositions()
 	if err != nil {
@@ -192,6 +200,8 @@ func (b *Board) PlaceShip(ship Ship) error {
 	return nil
 }
 
+//Attack marks the targeted enemy field as hit(x) if success is true or marks the targeted
+//field enemy field as miss(o) if success is false. Returns error if p is out of bounds.
 func (b *Board) Attack(p Position, success bool) error {
 	if isOutOfBounds(p) {
 		return errors.New("position out of bounds")
@@ -205,6 +215,11 @@ func (b *Board) Attack(p Position, success bool) error {
 	return nil
 }
 
+//ReceiveAttack returns hit status, sunk status and error. If the targeted field on own fields
+//is taken(s) the hit status is true, otherwise false. If the targeted field is taken(s) and
+//every other field which is part of the ship that is hit has already been hit the sunk status
+//is true, otherwise false. If the targeted field is out of bounds the method returns false,
+//false and non nil error.
 func (b *Board) ReceiveAttack(p Position) (bool, bool, error) {
 	if isOutOfBounds(p) {
 		return false, false, errors.New("position out of bounds")
@@ -219,6 +234,7 @@ func (b *Board) ReceiveAttack(p Position) (bool, bool, error) {
 	}
 }
 
+//ShipIsSunk returns true if all fields taken by the hit ship are already hit, false otherwise.
 func (b *Board) ShipIsSunk(p Position) bool {
 	pos := Position{
 		X: p.X - 1,
@@ -275,6 +291,7 @@ func (b *Board) ShipIsSunk(p Position) bool {
 	return true
 }
 
+//IsBeaten returns true if all ships are sunk, false otherwise.
 func (b *Board) IsBeaten() bool {
 	for _, r := range b.ownFields {
 		for _, v := range r {

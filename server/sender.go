@@ -16,6 +16,8 @@ type ResponseSender interface {
 type Sender struct {
 }
 
+//SendResponse sends the response through the connection. If the sender fails to Marshal the response
+//it returns without sending message
 func (s *Sender) SendResponse(response web.Response, conn player.Connection) {
 	resp, err := json.Marshal(response)
 	if err != nil {
