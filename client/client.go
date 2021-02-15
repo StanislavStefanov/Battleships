@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/StanislavStefanov/Battleships/pkg/board"
+	"github.com/StanislavStefanov/Battleships/pkg/game"
 	"github.com/StanislavStefanov/Battleships/pkg/web"
 	"github.com/gorilla/websocket"
 	"log"
@@ -29,7 +29,7 @@ const (
 	Lose         = "lose"
 	Info         = "info"
 	List         = "ls-rooms"
-	Create       = "create"
+	Create       = "create-room"
 	Created      = "created"
 	Join         = "join-room"
 	JoinRandom   = "join-random"
@@ -38,7 +38,7 @@ const (
 type Client struct {
 	id    string
 	conn  *websocket.Conn
-	board *board.Board
+	board *game.Board
 }
 
 func printMessage(resp web.Response) {
@@ -83,7 +83,7 @@ func (c *Client) placeShip(resp web.Response) {
 	direction := resp.Args["direction"].(string)
 	length := int(resp.Args["length"].(float64))
 
-	ship := board.CreateShip(x, y, direction, length)
+	ship := game.CreateShip(x, y, direction, length)
 	err := c.board.PlaceShip(ship)
 	if err != nil {
 		fmt.Println(err)
@@ -93,7 +93,7 @@ func (c *Client) placeShip(resp web.Response) {
 func (c *Client) processShootOutcome(resp web.Response) {
 	success := resp.Args["hit"].(bool)
 	x, y := extractCoordinates(resp)
-	err := c.board.Attack(board.Position{
+	err := c.board.Attack(game.Position{
 		X: x,
 		Y: y,
 	}, success)
@@ -105,7 +105,7 @@ func (c *Client) processShootOutcome(resp web.Response) {
 func (c *Client) receiveAttack(resp web.Response) {
 	if len(resp.GetArgs()) != 0 {
 		x, y := extractCoordinates(resp)
-		c.board.ReceiveAttack(board.Position{
+		c.board.ReceiveAttack(game.Position{
 			X: x,
 			Y: y,
 		})
@@ -152,17 +152,11 @@ func writeLoop(done chan<- struct{}, client *Client) {
 		case JoinRandom:
 			sendRequest(request, client)
 		case PlaceShip:
-			b = placeShipOnBoard(b, request, client)
+			placeShipOnBoard(b, request, client)
 		case Shoot:
 			shootAtEnemy(b, request, client)
 		case Exit:
 			sendRequest(request, client)
-			return
-		}
-
-		marshal, _ := json.Marshal(request)
-		err = client.conn.WriteMessage(websocket.BinaryMessage, marshal)
-		if err != nil {
 			return
 		}
 	}
@@ -196,7 +190,7 @@ func joinRoom(request web.Request, client *Client) {
 	sendRequest(request, client)
 }
 
-func placeShipOnBoard(b []byte, request web.Request, client *Client) []byte {
+func placeShipOnBoard(b []byte, request web.Request, client *Client) {
 	buf := bufio.NewReader(os.Stdin)
 
 	fmt.Println("enter x coordinate")
@@ -217,7 +211,6 @@ func placeShipOnBoard(b []byte, request web.Request, client *Client) []byte {
 	args := map[string]interface{}{"x": x, "y": y, "direction": direction}
 	request.Args = args
 	sendRequest(request, client)
-	return b
 }
 
 func shootAtEnemy(b []byte, request web.Request, client *Client) {
@@ -259,7 +252,7 @@ func main() {
 	client := &Client{
 		id:    "",
 		conn:  c,
-		board: board.InitBoard(),
+		board: game.InitBoard(),
 	}
 	done := make(chan struct{})
 
