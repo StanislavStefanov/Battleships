@@ -158,7 +158,8 @@ func printBoard(b [][]rune) {
 	}
 	fmt.Println("")
 	for i, r := range b {
-		fmt.Print(i, " ")
+		a := string('A' + i)
+		fmt.Print(a, " ")
 		for _, c := range r {
 			fmt.Print(string(c), " ")
 		}
