@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -194,9 +195,9 @@ func placeShipOnBoard(b []byte, request web.Request, client *Client) {
 	buf := bufio.NewReader(os.Stdin)
 
 	fmt.Println("enter x coordinate")
-	b, _ = buf.ReadBytes('\n')
-	x := string(b)
-	x = strings.TrimSuffix(x, "\n")
+	rune, _, _ := buf.ReadRune()
+	x := strconv.Itoa(int(rune - 'A'))
+	buf.ReadBytes('\n')
 
 	fmt.Println("enter y coordinate")
 	b, _ = buf.ReadBytes('\n')
@@ -217,9 +218,9 @@ func shootAtEnemy(b []byte, request web.Request, client *Client) {
 	buf := bufio.NewReader(os.Stdin)
 
 	fmt.Println("enter x coordinate")
-	b, _ = buf.ReadBytes('\n')
-	x := string(b)
-	x = strings.TrimSuffix(x, "\n")
+	rune, _, _ := buf.ReadRune()
+	x := strconv.Itoa(int(rune - 'A'))
+	buf.ReadBytes('\n')
 
 	fmt.Println("enter y coordinate")
 	b, _ = buf.ReadBytes('\n')
