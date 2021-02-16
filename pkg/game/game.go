@@ -3,6 +3,7 @@ package game
 import (
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 const (
@@ -158,7 +159,7 @@ func printBoard(b [][]rune) {
 	}
 	fmt.Println("")
 	for i, r := range b {
-		a := string('A' + i)
+		a := strconv.Itoa(int('A' + i))
 		fmt.Print(a, " ")
 		for _, c := range r {
 			fmt.Print(string(c), " ")

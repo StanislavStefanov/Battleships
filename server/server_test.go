@@ -808,6 +808,7 @@ func TestServer_RunRoom(t *testing.T) {
 			SecondExit: secondExit,
 			Id:         "room",
 			Done:       done,
+			NextShipSize: destroyer,
 		}
 
 		s := &Server{
@@ -925,6 +926,7 @@ func TestServer_joinRunningRoom(t *testing.T) {
 			Current: first,
 			Sender:  &Sender{},
 			Id:      "room",
+			NextShipSize: destroyer,
 		}
 
 		s := &Server{
