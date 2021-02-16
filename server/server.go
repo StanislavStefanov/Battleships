@@ -257,7 +257,7 @@ func (s *Server) joinRunningRoom(r *Room, secondPlayer *player.Player, wg *sync.
 		r.Phase = pkg.PlaceShip
 
 		resp = web.BuildResponse(pkg.PlaceShip,
-			fmt.Sprintf("Select where to place ship with length %d", destroyer),
+			fmt.Sprintf("Select where to place ship with length %d", r.NextShipSize),
 			nil)
 		r.Sender.SendResponse(resp, r.Current.Conn)
 	}
